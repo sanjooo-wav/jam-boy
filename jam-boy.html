@@ -523,11 +523,14 @@
   }
 
   function loadLibrary(){
-    dbGetAll().then(function(records){
-      records.forEach(function(r){ state.tracks.push({ id: r.id, name: r.name, duration: r.duration, blob: r.blob, url: URL.createObjectURL(r.blob) }); });
+    var localTracks = dbGetAll().catch(function(){ return []; });
+    var stockTracks = fetch("/api/music").then(function(response){ return response.ok ? response.json() : []; }).catch(function(){ return []; });
+    Promise.all([stockTracks, localTracks]).then(function(results){
+      results[0].forEach(function(track){ state.tracks.push({ id: "stock:" + track.url, name: track.name, duration: 0, url: track.url, stock: true }); });
+      results[1].forEach(function(r){ state.tracks.push({ id: r.id, name: r.name, duration: r.duration, blob: r.blob, url: URL.createObjectURL(r.blob) }); });
       if(state.tracks.length){ state.currentIndex = 0; loadCurrent(false); }
       render();
-    }).catch(function(){ render(); });
+    });
   }
 
   /* ---------- helpers ---------- */
@@ -787,6 +790,7 @@
   function removeTrack(id){
     var idx = state.tracks.findIndex(function(t){ return t.id === id; });
     if(idx === -1) return;
+    if(state.tracks[idx].stock){ showToast("Stock music stays available to everyone"); return; }
     if(state.tracks[idx].bundled){ showToast("Bundled tracks stay in public/music"); return; }
     var wasCurrent = idx === state.currentIndex;
     URL.revokeObjectURL(state.tracks[idx].url);
@@ -929,6 +933,7 @@
         del.setAttribute("aria-label", "Remove " + t.name);
         del.textContent = "×";
         del.addEventListener("click", function(e){ e.stopPropagation(); removeTrack(t.id); });
+        if(t.stock) del.hidden = true;
 
         row.appendChild(cursor); row.appendChild(name); row.appendChild(dur); row.appendChild(del);
         row.addEventListener("click", function(){
